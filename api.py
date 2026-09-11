@@ -10,7 +10,7 @@ from google import genai
 from google.genai import types
 
 # --- CẤU HÌNH CƠ BẢN & MODEL ---
-MODEL_NAME = "gemini-2.5-flash"
+MODEL_NAME = "gemini-3.6-flash"
 
 # Điền API Key trực tiếp vào đây nếu bạn không dùng biến môi trường (Environment Variable)
 API_KEY_DEFAULT = "" 
