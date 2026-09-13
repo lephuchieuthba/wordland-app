@@ -36,13 +36,13 @@ def trigger_confetti():
     """
     components.html(confetti_html, height=0, width=0)
 
-# --- HÀM DỌN DẸP CHUỖI JSON ---
+# --- HÀM DỌN DEEP CHUỖI JSON ---
 def clean_json_text(text):
     text = re.sub(r"^```json\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"^```\s*", "", text, flags=re.MULTILINE)
     return text.strip()
 
-# --- HÀM TẠO NỘI DUNG AI CÓ LƯU CACHE (CHỐNG LỖI 429 OVER QUOTA API) ---
+# --- HÀM TẠO NỘI DUNG AI CÓ LƯU CACHE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ai_content_cached(prompt: str):
     res = client.models.generate_content(model=MODEL_NAME, contents=prompt)
@@ -1026,10 +1026,10 @@ if st.session_state.is_admin:
                             </div>
                             <hr style="margin: 12px 0; border: 0; border-top: 1px solid #e2e8f0;">
                             <p style="margin: 0; font-size: 1rem; color: #2d3436 !important;">
-                                <b style="color: #2d3436;">✍️ Học sinh chọn:</b> 
+                                <b>✍️ Học sinh chọn:</b> 
                                 <span style="background-color: #ffeaa7; color: #d63031; padding: 3px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #fdcb6e;">{st_ans}</span> 
                                 &nbsp;&nbsp;|&nbsp;&nbsp; 
-                                <b style="color: #2d3436;">✅ Đáp án chuẩn:</b> 
+                                <b>✅ Đáp án chuẩn:</b> 
                                 <span style="background-color: #e6fffa; color: #00b894; padding: 3px 8px; border-radius: 6px; font-weight: bold; border: 1px solid #55efc4;">{correct_ans}</span>
                             </p>
                         </div>
@@ -1255,17 +1255,185 @@ with tab_fav:
     for fav in st.session_state.favorites:
         st.write(f"📌 **{fav['word']}**: {fav['meaning']}")
 
-# 11. ĐỀ THI THỬ 4 KỸ NĂNG
+# 11. ĐỀ THI THỬ 4 KỸ NĂNG (ĐÃ TÍCH HỢP ĐẦY ĐỦ LOGIC AI)
 with tab_mock_exam:
     st.subheader(f"📝 Đề Thi Thử AI 4 Kỹ Năng - Trình độ: **{st.session_state.level}**")
+    st.caption("💡 *Đề thi thử tổng hợp gồm 4 phần (Nghe, Nói, Đọc, Viết) được AI biên soạn riêng theo cấp độ của bạn.*")
+    
+    if st.button("🚀 Khởi Tạo Đề Thi Thử 4 Kỹ Năng Mới", type="primary", key="btn_gen_mock_exam"):
+        with st.spinner("AI Gemini đang biên soạn bộ đề thi 4 kỹ năng..."):
+            prompt_mock = f"""
+            Tạo 1 đề thi thử Tiếng Anh tổng hợp 4 kỹ năng cho trình độ '{st.session_state.level}'.
+            Trả về duy nhất JSON chuẩn theo cấu trúc:
+            {{
+                "listening": {{\"script\": \"Small conversation script...\", \"question\": \"What is the main idea?\", \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"], \"answer\": \"A\"}},
+                "reading": {{\"passage\": \"Short passage...\", \"question\": \"According to passage...\", \"options\": [\"A. ...\", \"B. ...\", \"C. ...\", \"D. ...\"], \"answer\": \"B\"}},
+                "speaking": {{\"topic\": \"Describe your favorite hobby and why you like it.\"}},
+                "writing": {{\"prompt\": \"Write a paragraph (60-80 words) about your hometown.\"}}
+            }}
+            """
+            try:
+                raw_text = generate_ai_content_cached(prompt_mock)
+                st.session_state.mock_exam_data = json.loads(clean_json_text(raw_text))
+            except Exception as e:
+                st.error(f"Lỗi khởi tạo đề thi từ AI: {e}")
 
-# 12. TRÒ CHƠI MÊ CUNG QUÁI VẬT
+    if "mock_exam_data" in st.session_state:
+        exam = st.session_state.mock_exam_data
+        
+        # Phần 1: Listening
+        st.markdown("#### 🎧 **Phần 1: Kỹ Năng Nghe (Listening)**")
+        l_script = exam.get("listening", {}).get("script", "")
+        if l_script:
+            st.audio(text_to_speech(l_script), format="audio/mp3")
+            with st.expander("👁️ Xem kịch bản bài nghe (Audio Script)"):
+                st.write(l_script)
+        l_q = exam.get("listening", {})
+        ans_listening = st.radio(f"**Câu hỏi:** {l_q.get('question')}", l_q.get('options', []), key="mock_ans_lis")
+        
+        st.divider()
+        
+        # Phần 2: Reading
+        st.markdown("#### 📖 **Phần 2: Kỹ Năng Đọc Hiểu (Reading)**")
+        r_q = exam.get("reading", {})
+        st.info(f"**Bài đọc:** {r_q.get('passage')}")
+        ans_reading = st.radio(f"**Câu hỏi:** {r_q.get('question')}", r_q.get('options', []), key="mock_ans_read")
+        
+        st.divider()
+
+        # Phần 3: Speaking
+        st.markdown("#### 🎙️ **Phần 3: Kỹ Năng Nói (Speaking)**")
+        s_q = exam.get("speaking", {})
+        st.warning(f"🎯 **Đề bài nói:** {s_q.get('topic')}")
+        mock_rec_audio = st.audio_input("Ghi âm bài nói của bạn:", key="mock_speak_mic")
+
+        st.divider()
+
+        # Phần 4: Writing
+        st.markdown("#### ✍️ **Phần 4: Kỹ Năng Viết (Writing)**")
+        w_q = exam.get("writing", {})
+        st.success(f"📌 **Đề bài viết:** {w_q.get('prompt')}")
+        mock_write_ans = st.text_area("Nhập bài làm đoạn văn của bạn tại đây:", height=100, key="mock_write_inp")
+
+        st.write("")
+        if st.button("🏆 NỘP BÀI THI THỬ & CHẤM ĐIỂM", type="primary", use_container_width=True, key="btn_sub_mock_exam"):
+            score = 0
+            if ans_listening and ans_listening[0] == l_q.get("answer", "").strip().upper():
+                score += 25
+            if ans_reading and ans_reading[0] == r_q.get("answer", "").strip().upper():
+                score += 25
+            if mock_rec_audio:
+                score += 25
+            if mock_write_ans.strip():
+                score += 25
+                
+            add_xp(score)
+            trigger_confetti()
+            st.balloons()
+            st.success(f"🎉 Bạn đã hoàn thành bài thi thử 4 kỹ năng! Điểm đạt được: **{score}/100 điểm** (+{score} XP)!")
+
+# 12. TRÒ CHƠI MÊ CUNG QUÁI VẬT (ĐÃ TÍCH HỢP MINI-GAME HOÀN CHỈNH)
 with tab_maze_game:
     st.subheader("🎮 Trò Chơi: Mê Cung Quái Vật Nâng Cấp")
+    st.caption("💡 *Giải đáp các câu hỏi tiếng Anh của Quái vật để nhận chìa khóa vượt qua 3 tầng mê cung!*")
 
-# 13. PHÂN TÍCH TIẾN ĐỘ
+    if "maze_level" not in st.session_state:
+        st.session_state.maze_level = 1
+
+    if st.button("🔄 Chơi Lại Từ Tầng 1", key="btn_reset_maze"):
+        st.session_state.maze_level = 1
+        if "maze_quiz" in st.session_state:
+            del st.session_state.maze_quiz
+        st.rerun()
+
+    st.markdown(f"### 🏰 **Vị Trí Hiện Tại: Tầng {st.session_state.maze_level} / 3**")
+    
+    if st.session_state.maze_level > 3:
+        trigger_confetti()
+        st.balloons()
+        st.success("🏆 CHÚC MỪNG BẠN ĐÃ THẮNG TRÒ CHƠI & THOÁT KHỎI MÊ CUNG QUÁI VẬT!")
+        if st.button("🎮 Chơi Ải Mới"):
+            st.session_state.maze_level = 1
+            st.rerun()
+    else:
+        if "maze_quiz" not in st.session_state:
+            with st.spinner("Quái vật đang chuẩn bị câu hỏi thử thách..."):
+                prompt_maze = f"Tạo 1 câu hỏi trắc nghiệm tiếng Anh dạng đố vui để vượt ải mê cung cho trình độ '{st.session_state.level}'. Trả về JSON: {{\"monster\": \"👹 Quái Vật Lửa\", \"question\": \"...\", \"options\": [\"A...\", \"B...\", \"C...\", \"D...\"], \"answer\": \"A\"}}"
+                try:
+                    raw_text = generate_ai_content_cached(prompt_maze)
+                    st.session_state.maze_quiz = json.loads(clean_json_text(raw_text))
+                except Exception as e:
+                    st.error(f"Lỗi trò chơi: {e}")
+
+        if "maze_quiz" in st.session_state:
+            mq = st.session_state.maze_quiz
+            st.markdown(f"""
+            <div class="reading-box" style="border-left-color: #d63031;">
+                <h4>{mq.get('monster', '👹 Quái Vật Mê Cung')} đang ngáng đường!</h4>
+                <p style="font-size: 1.1rem; font-weight: bold;">"{mq.get('question')}"</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            user_maze_ans = st.radio("Chọn câu trả lời để tấn công quái vật:", mq.get("options", []), key=f"maze_ans_{st.session_state.maze_level}")
+            
+            if st.button("⚔️ TẤN CÔNG QUÁI VẬT", type="primary", key="btn_attack_monster"):
+                if user_maze_ans and user_maze_ans[0] == mq.get("answer", "").strip().upper():
+                    trigger_confetti()
+                    st.success("💥 Chính xác! Quái vật đã bị hạ gục! Bạn nhận được Chìa khóa lên tầng tiếp theo (+20 XP)!")
+                    add_xp(20)
+                    st.session_state.maze_level += 1
+                    del st.session_state.maze_quiz
+                    st.rerun()
+                else:
+                    st.error("❌ Rất tiếc! Câu trả lời chưa chính xác. Quái vật đã phản công, hãy thử lại!")
+
+# 13. PHÂN TÍCH TIẾN ĐỘ (ĐÃ TÍCH HỢP BẢNG & THỐNG KÊ CHI TIẾT)
 with tab_analytics:
     st.subheader(f"📊 Phân Tích Tiến Độ Học Tập - **{st.session_state.fullname}**")
+    
+    all_invites_data = load_invites_data()
+    user_invites = [i for i in all_invites_data if i.get("recipient") == st.session_state.user]
+    completed_invites = [i for i in user_invites if i.get("status") in ["completed", "graded"]]
+    
+    col_an1, col_an2, col_an3, col_an4 = st.columns(4)
+    with col_an1:
+        st.metric("⭐ Tổng Điểm XP", f"{st.session_state.xp} XP")
+    with col_an2:
+        st.metric("📚 Bài Tập Được Giao", f"{len(user_invites)} bài")
+    with col_an3:
+        st.metric("✅ Bài Tập Đã Nộp", f"{len(completed_invites)} bài")
+    with col_an4:
+        rate = round((len(completed_invites) / len(user_invites) * 100), 1) if user_invites else 0.0
+        st.metric("🎯 Tỷ Lệ Hoàn Thành", f"{rate}%")
+
+    st.divider()
+    
+    col_chart1, col_chart2 = st.columns(2)
+    with col_chart1:
+        st.markdown("##### 📈 **Phân Phối Điểm XP Theo Kỹ Năng (Ước tính):**")
+        skill_stats = {
+            "Trắc nghiệm": sum(i.get("score", 0) for i in completed_invites if "Trắc nghiệm" in i.get("skill", "")),
+            "Đọc hiểu": sum(i.get("score", 0) for i in completed_invites if "Đọc" in i.get("skill", "")),
+            "Nghe": sum(i.get("score", 0) for i in completed_invites if "Nghe" in i.get("skill", "")),
+            "Viết": sum(i.get("score", 0) for i in completed_invites if "Viết" in i.get("skill", ""))
+        }
+        st.bar_chart(skill_stats)
+
+    with col_chart2:
+        st.markdown("##### 🏆 **Đánh Giá Tiến Độ Học Tập:**")
+        if st.session_state.xp >= 500:
+            st.success("🌟 Trình độ: **Học Viên Xuất Sắc (Master)**! Tiếp tục duy trì phong độ nhé!")
+        elif st.session_state.xp >= 200:
+            st.info("👍 Trình độ: **Học Viên Chăm Chỉ (Advanced)**! Hãy chăm chỉ làm thêm bài tập AI!")
+        else:
+            st.warning("🌱 Trình độ: **Tân Binh Học Tập (Beginner)**! Hãy tích cực luyện tập để tăng điểm XP!")
+            
+        st.write("📋 **Lịch sử làm bài mới nhất:**")
+        if completed_invites:
+            recent_data = [{"Bài tập": i.get("group_name"), "Kỹ năng": i.get("skill"), "Điểm": f"{i.get('score')} XP"} for i in completed_invites[-5:]]
+            st.table(recent_data)
+        else:
+            st.caption("Chưa có dữ liệu làm bài tập nào.")
 
 # 14. TẠO NHÓM & MỜI BẠN BÈ VÀO NHÓM
 with tab_groups:
