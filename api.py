@@ -36,8 +36,10 @@ def trigger_confetti():
     """
     components.html(confetti_html, height=0, width=0)
 
-# --- HÀM DỌN DEEP CHUỖI JSON ---
+# --- HÀM DỌN DẸP CHUỖI JSON CHỐNG LỖI ---
 def clean_json_text(text):
+    if not text:
+        return ""
     text = re.sub(r"^```json\s*", "", text, flags=re.MULTILINE)
     text = re.sub(r"^```\s*", "", text, flags=re.MULTILINE)
     return text.strip()
@@ -45,8 +47,11 @@ def clean_json_text(text):
 # --- HÀM TẠO NỘI DUNG AI CÓ LƯU CACHE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ai_content_cached(prompt: str):
-    res = client.models.generate_content(model=MODEL_NAME, contents=prompt)
-    return res.text
+    try:
+        res = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+        return res.text if res and hasattr(res, 'text') else ""
+    except Exception as e:
+        return ""
 
 # --- CUSTOM CSS ---
 st.markdown("""
@@ -452,7 +457,11 @@ def admin_send_ai_homework(admin_user, target_student, skill_type, topic, level)
             prompt = f"Tạo 1 đề bài tập kỹ năng Viết về chủ đề '{topic}' cho trình độ '{level}'. Trả về JSON dạng: {{\"prompt\": \"Nội dung yêu cầu viết đoạn văn...\"}}"
 
         raw_text = generate_ai_content_cached(prompt)
-        ai_content_json = json.loads(clean_json_text(raw_text))
+        cleaned = clean_json_text(raw_text)
+        if not cleaned:
+            return False, "⚠️ Không thể kết nối với Gemini API hoặc quá hạn mức!"
+            
+        ai_content_json = json.loads(cleaned)
 
         invites = load_invites_data()
         invites.append({
@@ -1103,11 +1112,15 @@ with tab_cards:
             prompt = f"Tạo 5 từ vựng tiếng Anh chủ đề '{selected_topic}' phù hợp trình độ '{st.session_state.level}'. Trả về JSON: [{{\"icon\": \"🍎\", \"word\": \"Apple\", \"ipa\": \"/ˈæp.əl/\", \"meaning\": \"Quả táo\", \"example\": \"I eat an apple.\"}}]"
             try:
                 raw_text = generate_ai_content_cached(prompt)
-                st.session_state.flashcards = json.loads(clean_json_text(raw_text))
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    st.session_state.flashcards = json.loads(cleaned)
+                else:
+                    st.error("⚠️ Phản hồi từ AI rỗng. Vui lòng thử lại!")
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-    if "flashcards" in st.session_state:
+    if "flashcards" in st.session_state and st.session_state.flashcards:
         cols = st.columns(len(st.session_state.flashcards))
         for idx, card in enumerate(st.session_state.flashcards):
             with cols[idx % len(cols)]:
@@ -1156,8 +1169,11 @@ with tab_grammar_learn:
             prompt_learn = f"Soạn bài giảng về {selected_tense} cho trình độ {st.session_state.level} dạng Markdown."
             try:
                 raw_text = generate_ai_content_cached(prompt_learn)
-                st.session_state.grammar_lesson = raw_text
-                add_xp(5)
+                if raw_text:
+                    st.session_state.grammar_lesson = raw_text
+                    add_xp(5)
+                else:
+                    st.error("⚠️ Phản hồi từ AI rỗng. Vui lòng thử lại!")
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
@@ -1171,11 +1187,15 @@ with tab_tense_game:
         with st.spinner("AI đang tạo bài tập..."):
             try:
                 raw_text = generate_ai_content_cached(f"Tạo 5 câu trắc nghiệm chia động từ {selected_tense} dạng JSON.")
-                st.session_state.tense_quiz_data = json.loads(clean_json_text(raw_text))
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    st.session_state.tense_quiz_data = json.loads(cleaned)
+                else:
+                    st.error("⚠️ Phản hồi từ AI rỗng. Vui lòng thử lại!")
             except Exception as e:
                 st.error(f"Lỗi tải câu hỏi từ AI: {e}")
             
-    if "tense_quiz_data" in st.session_state:
+    if "tense_quiz_data" in st.session_state and st.session_state.tense_quiz_data:
         t_ans = {}
         for item in st.session_state.tense_quiz_data:
             t_ans[item['id']] = st.radio(f"Câu {item['id']}: {item['question']}", item['options'], key=f"tq_{item['id']}")
@@ -1197,19 +1217,28 @@ with tab_grammar_check:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# 6. ĐỌC HIỂU
+# 6. ĐỌC HIỂU (ĐÃ SỬA CHỐNG LỖI JSON AN TOÀN)
 with tab_reading:
     st.subheader(f"📖 Luyện Đọc Hiểu - {selected_topic}")
     if st.button("✨ Tạo Bài Đọc Mới", type="primary"):
-        try:
-            raw_text = generate_ai_content_cached(f"Tạo bài đọc về '{selected_topic}' dạng JSON.")
-            st.session_state.reading_data = json.loads(clean_json_text(raw_text))
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+        with st.spinner("AI Gemini đang biên soạn bài đọc hiểu..."):
+            try:
+                raw_text = generate_ai_content_cached(f"Tạo bài đọc về '{selected_topic}' trình độ {st.session_state.level} dạng JSON với tiêu đề và passage.")
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    st.session_state.reading_data = json.loads(cleaned)
+                    trigger_confetti()
+                    st.rerun()
+                else:
+                    st.error("⚠️ Phản hồi từ AI rỗng. Vui lòng bấm thử lại!")
+            except json.JSONDecodeError:
+                st.error("⚠️ Phản hồi từ AI không đúng cấu trúc JSON chuẩn!")
+            except Exception as e:
+                st.error(f"Lỗi: {e}")
 
-    if "reading_data" in st.session_state:
+    if "reading_data" in st.session_state and st.session_state.reading_data:
         data = st.session_state.reading_data
-        st.markdown(f"### 📖 {data.get('title')}\n{data.get('passage')}")
+        st.markdown(f"### 📖 {data.get('title', 'Bài đọc')}\n{data.get('passage', '')}")
 
 # 7. HỘI THOẠI
 with tab_dialogue:
@@ -1217,10 +1246,14 @@ with tab_dialogue:
     if st.button("💬 Tạo Hội Thoại Mới"):
         try:
             raw_text = generate_ai_content_cached(f"Tạo hội thoại 2 người về {selected_topic} dạng JSON.")
-            st.session_state.dialogue_data = json.loads(clean_json_text(raw_text))
+            cleaned = clean_json_text(raw_text)
+            if cleaned:
+                st.session_state.dialogue_data = json.loads(cleaned)
+            else:
+                st.error("⚠️ Phản hồi từ AI rỗng!")
         except Exception as e:
             st.error(f"Lỗi: {e}")
-    if "dialogue_data" in st.session_state:
+    if "dialogue_data" in st.session_state and st.session_state.dialogue_data:
         for line in st.session_state.dialogue_data.get("dialogue", []):
             st.write(f"**{line.get('speaker')}:** {line.get('text')}")
 
@@ -1231,10 +1264,14 @@ with tab_writing:
     if st.button("🎲 Bốc Chủ Đề"):
         try:
             raw_text = generate_ai_content_cached(f"Tạo 1 chủ đề viết tiếng Anh dạng JSON.")
-            st.session_state.write_topic_data = json.loads(clean_json_text(raw_text))
+            cleaned = clean_json_text(raw_text)
+            if cleaned:
+                st.session_state.write_topic_data = json.loads(cleaned)
+            else:
+                st.error("⚠️ Phản hồi rỗng!")
         except Exception as e:
             st.error(f"Lỗi: {e}")
-    if "write_topic_data" in st.session_state:
+    if "write_topic_data" in st.session_state and st.session_state.write_topic_data:
         wt = st.session_state.write_topic_data
         st.info(f"📌 **Chủ đề:** {wt.get('topic_en')} ({wt.get('topic_vi')})")
 
@@ -1255,7 +1292,7 @@ with tab_fav:
     for fav in st.session_state.favorites:
         st.write(f"📌 **{fav['word']}**: {fav['meaning']}")
 
-# 11. ĐỀ THI THỬ 4 KỸ NĂNG (ĐÃ TÍCH HỢP ĐẦY ĐỦ LOGIC AI)
+# 11. ĐỀ THI THỬ 4 KỸ NĂNG
 with tab_mock_exam:
     st.subheader(f"📝 Đề Thi Thử AI 4 Kỹ Năng - Trình độ: **{st.session_state.level}**")
     st.caption("💡 *Đề thi thử tổng hợp gồm 4 phần (Nghe, Nói, Đọc, Viết) được AI biên soạn riêng theo cấp độ của bạn.*")
@@ -1274,14 +1311,18 @@ with tab_mock_exam:
             """
             try:
                 raw_text = generate_ai_content_cached(prompt_mock)
-                st.session_state.mock_exam_data = json.loads(clean_json_text(raw_text))
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    st.session_state.mock_exam_data = json.loads(cleaned)
+                else:
+                    st.error("⚠️ API rỗng!")
             except Exception as e:
                 st.error(f"Lỗi khởi tạo đề thi từ AI: {e}")
 
-    if "mock_exam_data" in st.session_state:
+    if "mock_exam_data" in st.session_state and st.session_state.mock_exam_data:
         exam = st.session_state.mock_exam_data
         
-        # Phần 1: Listening
+        # Listening
         st.markdown("#### 🎧 **Phần 1: Kỹ Năng Nghe (Listening)**")
         l_script = exam.get("listening", {}).get("script", "")
         if l_script:
@@ -1293,7 +1334,7 @@ with tab_mock_exam:
         
         st.divider()
         
-        # Phần 2: Reading
+        # Reading
         st.markdown("#### 📖 **Phần 2: Kỹ Năng Đọc Hiểu (Reading)**")
         r_q = exam.get("reading", {})
         st.info(f"**Bài đọc:** {r_q.get('passage')}")
@@ -1301,7 +1342,7 @@ with tab_mock_exam:
         
         st.divider()
 
-        # Phần 3: Speaking
+        # Speaking
         st.markdown("#### 🎙️ **Phần 3: Kỹ Năng Nói (Speaking)**")
         s_q = exam.get("speaking", {})
         st.warning(f"🎯 **Đề bài nói:** {s_q.get('topic')}")
@@ -1309,7 +1350,7 @@ with tab_mock_exam:
 
         st.divider()
 
-        # Phần 4: Writing
+        # Writing
         st.markdown("#### ✍️ **Phần 4: Kỹ Năng Viết (Writing)**")
         w_q = exam.get("writing", {})
         st.success(f"📌 **Đề bài viết:** {w_q.get('prompt')}")
@@ -1332,7 +1373,7 @@ with tab_mock_exam:
             st.balloons()
             st.success(f"🎉 Bạn đã hoàn thành bài thi thử 4 kỹ năng! Điểm đạt được: **{score}/100 điểm** (+{score} XP)!")
 
-# 12. TRÒ CHƠI MÊ CUNG QUÁI VẬT (ĐÃ TÍCH HỢP MINI-GAME HOÀN CHỈNH)
+# 12. TRÒ CHƠI MÊ CUNG QUÁI VẬT
 with tab_maze_game:
     st.subheader("🎮 Trò Chơi: Mê Cung Quái Vật Nâng Cấp")
     st.caption("💡 *Giải đáp các câu hỏi tiếng Anh của Quái vật để nhận chìa khóa vượt qua 3 tầng mê cung!*")
@@ -1361,11 +1402,15 @@ with tab_maze_game:
                 prompt_maze = f"Tạo 1 câu hỏi trắc nghiệm tiếng Anh dạng đố vui để vượt ải mê cung cho trình độ '{st.session_state.level}'. Trả về JSON: {{\"monster\": \"👹 Quái Vật Lửa\", \"question\": \"...\", \"options\": [\"A...\", \"B...\", \"C...\", \"D...\"], \"answer\": \"A\"}}"
                 try:
                     raw_text = generate_ai_content_cached(prompt_maze)
-                    st.session_state.maze_quiz = json.loads(clean_json_text(raw_text))
+                    cleaned = clean_json_text(raw_text)
+                    if cleaned:
+                        st.session_state.maze_quiz = json.loads(cleaned)
+                    else:
+                        st.error("⚠️ API rỗng!")
                 except Exception as e:
                     st.error(f"Lỗi trò chơi: {e}")
 
-        if "maze_quiz" in st.session_state:
+        if "maze_quiz" in st.session_state and st.session_state.maze_quiz:
             mq = st.session_state.maze_quiz
             st.markdown(f"""
             <div class="reading-box" style="border-left-color: #d63031;">
@@ -1387,7 +1432,7 @@ with tab_maze_game:
                 else:
                     st.error("❌ Rất tiếc! Câu trả lời chưa chính xác. Quái vật đã phản công, hãy thử lại!")
 
-# 13. PHÂN TÍCH TIẾN ĐỘ (ĐÃ TÍCH HỢP BẢNG & THỐNG KÊ CHI TIẾT)
+# 13. PHÂN TÍCH TIẾN ĐỘ
 with tab_analytics:
     st.subheader(f"📊 Phân Tích Tiến Độ Học Tập - **{st.session_state.fullname}**")
     
