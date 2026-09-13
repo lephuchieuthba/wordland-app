@@ -305,22 +305,30 @@ def update_user_profile_full(user, new_pwd, fullname, user_class, school, level)
     try:
         rows = get_all_users_from_csv()
         found = False
+        
         for i, row in enumerate(rows):
             if row and row[0].strip().lower() == user.lower():
-                pwd = new_pwd if new_pwd.strip() else (row[1] if len(row) > 1 else "")
+                # Giữ lại mật khẩu cũ nếu người dùng để trống
+                pwd = new_pwd.strip() if new_pwd.strip() else (row[1] if len(row) > 1 else "")
                 xp = row[2] if len(row) > 2 else (999999 if user == "lephuchieuadmin" else 0)
+                
+                # Cập nhật đầy đủ 7 cột thông tin
                 rows[i] = [user, pwd, xp, fullname, user_class, school, level]
                 found = True
                 break
 
         if not found and user == "lephuchieuadmin":
-            pwd = new_pwd if new_pwd.strip() else "hieutinhoctre"
+            pwd = new_pwd.strip() if new_pwd.strip() else "hieutinhoctre"
             rows.append([user, pwd, 999999, fullname, user_class, school, level])
 
+        # Ghi đè lại toàn bộ tệp list.csv
         with open("list.csv", mode="w", encoding="utf-8", newline="") as f:
-            csv.writer(f).writerows(rows)
+            writer = csv.writer(f)
+            writer.writerows(rows)
+            
         return True
-    except Exception:
+    except Exception as e:
+        st.error(f"Lỗi khi lưu dữ liệu vào CSV: {e}")
         return False
 
 def admin_update_student(user, new_fullname, new_pwd):
@@ -610,12 +618,16 @@ with st.sidebar.expander("✏️ **Đổi thông tin & Mật khẩu**"):
         if not new_fullname.strip() or not new_class.strip() or not new_school.strip():
             st.warning("Vui lòng không để trống các trường bắt buộc!")
         else:
+            # 1. Lưu vào file CSV
             if update_user_profile_full(st.session_state.user, new_pass_input, new_fullname.strip(), new_class.strip(), new_school.strip(), new_level):
+                # 2. Cập nhật ngay lập tức vào session_state để lưu giữ thông tin hiển thị
                 st.session_state.fullname = new_fullname.strip()
                 st.session_state.user_class = new_class.strip()
                 st.session_state.school = new_school.strip()
                 st.session_state.level = new_level
-                st.success("Cập nhật thông tin và mật khẩu thành công!")
+                
+                trigger_confetti()
+                st.success("🎉 Cập nhật và lưu thông tin học viên thành công!")
                 st.rerun()
 
 st.sidebar.write("")
