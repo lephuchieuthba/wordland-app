@@ -44,11 +44,17 @@ def clean_json_text(text):
     text = re.sub(r"^```\s*", "", text, flags=re.MULTILINE)
     return text.strip()
 
-# --- HÀM TẠO NỘI DUNG AI CÓ LƯU CACHE ---
+# --- HÀM TẠO NỘI DUNG AI ÉP CHUẨN JSON VÀ LƯU CACHE ---
 @st.cache_data(ttl=3600, show_spinner=False)
 def generate_ai_content_cached(prompt: str):
     try:
-        res = client.models.generate_content(model=MODEL_NAME, contents=prompt)
+        # Ép Gemini trả về định dạng application/json thuần túy
+        config = types.GenerateContentConfig(response_mime_type="application/json")
+        res = client.models.generate_content(
+            model=MODEL_NAME, 
+            contents=prompt,
+            config=config
+        )
         return res.text if res and hasattr(res, 'text') else ""
     except Exception as e:
         return ""
@@ -1217,29 +1223,38 @@ with tab_grammar_check:
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
-# 6. ĐỌC HIỂU (ĐÃ SỬA CHỐNG LỖI JSON AN TOÀN)
+# 6. ĐỌC HIỂU (ĐÃ FIX CHỐNG LỖI JSON)
 with tab_reading:
     st.subheader(f"📖 Luyện Đọc Hiểu - {selected_topic}")
-    if st.button("✨ Tạo Bài Đọc Mới", type="primary"):
+    if st.button("✨ Tạo Bài Đọc Mới", type="primary", key="btn_create_reading_tab"):
         with st.spinner("AI Gemini đang biên soạn bài đọc hiểu..."):
+            prompt_reading = f"""
+            Tạo 1 bài đọc hiểu tiếng Anh ngắn khoảng 80 từ về chủ đề '{selected_topic}' cho trình độ '{st.session_state.level}'.
+            Trả về dạng JSON có hai trường: "title" (tiêu đề) và "passage" (nội dung đoạn văn).
+            """
             try:
-                raw_text = generate_ai_content_cached(f"Tạo bài đọc về '{selected_topic}' trình độ {st.session_state.level} dạng JSON với tiêu đề và passage.")
+                raw_text = generate_ai_content_cached(prompt_reading)
                 cleaned = clean_json_text(raw_text)
+                
                 if cleaned:
                     st.session_state.reading_data = json.loads(cleaned)
                     trigger_confetti()
                     st.rerun()
                 else:
-                    st.error("⚠️ Phản hồi từ AI rỗng. Vui lòng bấm thử lại!")
+                    st.error("⚠️ Hệ thống tạm thời không nhận được dữ liệu từ AI. Bạn hãy bấm nút 'Tạo Bài Đọc Mới' để thử lại!")
             except json.JSONDecodeError:
-                st.error("⚠️ Phản hồi từ AI không đúng cấu trúc JSON chuẩn!")
+                st.error("⚠️ Phản hồi chưa chuẩn định dạng. Vui lòng nhấn nút thử lại một lần nữa!")
             except Exception as e:
                 st.error(f"Lỗi: {e}")
 
     if "reading_data" in st.session_state and st.session_state.reading_data:
         data = st.session_state.reading_data
-        st.markdown(f"### 📖 {data.get('title', 'Bài đọc')}\n{data.get('passage', '')}")
-
+        st.markdown(f"""
+        <div class="reading-box" style="background: rgba(255, 255, 255, 0.95); padding: 20px; border-radius: 15px; margin-top: 15px; color: #2d3436;">
+            <h3 style="color: #6C5CE7; margin-bottom: 10px;">📖 {data.get('title', 'Bài Đọc Hiểu')}</h3>
+            <p style="font-size: 1.1rem; line-height: 1.6; color: #2d3436;">{data.get('passage', '')}</p>
+        </div>
+        """, unsafe_allow_html=True)
 # 7. HỘI THOẠI
 with tab_dialogue:
     st.subheader(f"🎧 Hội Thoại AI - {selected_topic}")
