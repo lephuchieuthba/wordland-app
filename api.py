@@ -1537,19 +1537,25 @@ with tab_dialogue:
 
 # 8. VIẾT ĐOẠN VĂN
 with tab_writing:
-    st.subheader("✍️ Thử Thách Viết Đoạn Văn")
-    min_words = st.number_input("🎯 Yêu cầu số từ tối thiểu:", 7, 300, 20)
+    st.subheader("✍️ Thử Thách Viết Đoạn Văn & AI Chấm Điểm")
     
-    if st.button("🎲 Bốc Chủ Đề", type="primary", key="btn_get_write_topic"):
+    col_w1, col_w2 = st.columns([1, 1])
+    with col_w1:
+        min_words = st.number_input("🎯 Yêu cầu số từ tối thiểu:", 7, 300, 20, key="w_min_words")
+    with col_w2:
+        st.write("")
+        st.write("")
+        btn_get_topic = st.button("🎲 Bốc Chủ Đề Mới", type="primary", key="btn_get_write_topic", use_container_width=True)
+
+    # 1. Thao tác bốc chủ đề
+    if btn_get_topic:
         with st.spinner("AI đang chọn chủ đề viết văn..."):
-            # Thêm prompt yêu cầu rõ cấu trúc JSON
             prompt_write = f"Tạo 1 chủ đề bài viết tiếng Anh ngẫu nhiên cho trình độ '{st.session_state.level}'. Trả về JSON chuẩn dạng: {{\"topic_en\": \"Write about your favorite season\", \"topic_vi\": \"Viết về mùa bạn yêu thích nhất\"}}"
             try:
                 raw_text = generate_ai_content_cached(prompt_write)
                 cleaned = clean_json_text(raw_text)
                 if cleaned:
                     data = json.loads(cleaned)
-                    # Kiểm tra dữ liệu hợp lệ trước khi lưu vào session_state
                     if isinstance(data, dict) and "topic_en" in data:
                         st.session_state.write_topic_data = data
                         trigger_confetti()
@@ -1560,12 +1566,60 @@ with tab_writing:
             except Exception as e:
                 st.error(f"Lỗi tạo chủ đề: {e}")
 
-    # Hiển thị chủ đề an toàn (có giá trị mặc định tránh báo None)
+    # 2. Hiển thị khung chủ đề, khung nhập bài làm và nút chấm điểm
     if "write_topic_data" in st.session_state and st.session_state.write_topic_data:
         wt = st.session_state.write_topic_data
         topic_en = wt.get('topic_en', 'Chưa có tên chủ đề tiếng Anh')
         topic_vi = wt.get('topic_vi', 'Chưa có dịch tiếng Việt')
-        st.info(f"📌 **Chủ đề:** {topic_en} ({topic_vi})")
+        
+        st.info(f"📌 **Chủ đề bài viết:** {topic_en}\n\n💡 **Dịch nghĩa:** {topic_vi}")
+
+        # KHUNG VIẾT BÀI
+        student_essay = st.text_area(
+            "✍️ Nhập bài văn tiếng Anh của bạn tại đây:", 
+            height=180, 
+            placeholder="Type your paragraph here...",
+            key="input_student_essay"
+        )
+
+        # Đếm số từ thực tế
+        word_count = len(student_essay.strip().split()) if student_essay.strip() else 0
+        st.caption(f"📏 Số từ đã viết: **{word_count}** / {min_words} từ tối thiểu")
+
+        # NÚT GỬI AI CHẤM ĐIỂM
+        if st.button("🚀 Nộp Bài & Nhờ AI Chấm Điểm", type="primary", use_container_width=True, key="btn_ai_grade_essay"):
+            if not student_essay.strip():
+                st.warning("Vui lòng viết đoạn văn trước khi nộp bài!")
+            elif word_count < min_words:
+                st.warning(f"Bài viết của bạn chưa đủ {min_words} từ tối thiểu (mới đạt {word_count} từ). Hãy viết thêm nhé!")
+            else:
+                with st.spinner("AI Gemini đang đọc và chấm điểm bài viết của bạn..."):
+                    prompt_grade = f"""
+                    Hãy đóng vai giáo viên Tiếng Anh chấm bài viết cho trình độ '{st.session_state.level}'.
+                    Chủ đề: {topic_en}
+                    Bài làm của học sinh: "{student_essay.strip()}"
+
+                    Hãy đưa ra phản hồi chi tiết bao gồm:
+                    1. 🏆 Điểm số (Thang điểm 10/10)
+                    2. 🔍 Nhận xét ưu điểm & Nhược điểm
+                    3. ✏️ Sửa lỗi ngữ pháp/từ vựng (nếu có)
+                    4. 🌟 Đoạn văn mẫu gợi ý cải thiện
+                    """
+                    try:
+                        feedback = generate_ai_content_cached(prompt_grade)
+                        st.session_state.essay_feedback = feedback
+                        add_xp(30)
+                        trigger_confetti()
+                    except Exception as e:
+                        st.error(f"Lỗi chấm bài từ AI: {e}")
+
+        # Hiển thị kết quả chấm điểm của AI
+        if "essay_feedback" in st.session_state and st.session_state.essay_feedback:
+            st.divider()
+            st.markdown("### 📝 **Kết Quả Đánh Giá Từ AI Gemini:**")
+            st.markdown(f"<div class='reading-box'>{st.session_state.essay_feedback}</div>", unsafe_allow_html=True)
+    else:
+        st.caption("👈 Nhấn nút **'🎲 Bốc Chủ Đề Mới'** ở trên để bắt đầu làm bài thử thách viết văn!")
 
 # 9. TỪ ĐIỂN
 with tab_dict:
