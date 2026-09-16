@@ -1539,19 +1539,33 @@ with tab_dialogue:
 with tab_writing:
     st.subheader("✍️ Thử Thách Viết Đoạn Văn")
     min_words = st.number_input("🎯 Yêu cầu số từ tối thiểu:", 7, 300, 20)
-    if st.button("🎲 Bốc Chủ Đề"):
-        try:
-            raw_text = generate_ai_content_cached(f"Tạo 1 chủ đề viết tiếng Anh dạng JSON.")
-            cleaned = clean_json_text(raw_text)
-            if cleaned:
-                st.session_state.write_topic_data = json.loads(cleaned)
-            else:
-                st.error("⚠️ Phản hồi rỗng!")
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+    
+    if st.button("🎲 Bốc Chủ Đề", type="primary", key="btn_get_write_topic"):
+        with st.spinner("AI đang chọn chủ đề viết văn..."):
+            # Thêm prompt yêu cầu rõ cấu trúc JSON
+            prompt_write = f"Tạo 1 chủ đề bài viết tiếng Anh ngẫu nhiên cho trình độ '{st.session_state.level}'. Trả về JSON chuẩn dạng: {{\"topic_en\": \"Write about your favorite season\", \"topic_vi\": \"Viết về mùa bạn yêu thích nhất\"}}"
+            try:
+                raw_text = generate_ai_content_cached(prompt_write)
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    data = json.loads(cleaned)
+                    # Kiểm tra dữ liệu hợp lệ trước khi lưu vào session_state
+                    if isinstance(data, dict) and "topic_en" in data:
+                        st.session_state.write_topic_data = data
+                        trigger_confetti()
+                    else:
+                        st.error("⚠️ Phản hồi từ AI chưa đúng cấu trúc. Vui lòng bấm bốc lại!")
+                else:
+                    st.error("⚠️ Hệ thống không nhận được dữ liệu từ AI. Vui lòng thử lại!")
+            except Exception as e:
+                st.error(f"Lỗi tạo chủ đề: {e}")
+
+    # Hiển thị chủ đề an toàn (có giá trị mặc định tránh báo None)
     if "write_topic_data" in st.session_state and st.session_state.write_topic_data:
         wt = st.session_state.write_topic_data
-        st.info(f"📌 **Chủ đề:** {wt.get('topic_en')} ({wt.get('topic_vi')})")
+        topic_en = wt.get('topic_en', 'Chưa có tên chủ đề tiếng Anh')
+        topic_vi = wt.get('topic_vi', 'Chưa có dịch tiếng Việt')
+        st.info(f"📌 **Chủ đề:** {topic_en} ({topic_vi})")
 
 # 9. TỪ ĐIỂN
 with tab_dict:
