@@ -554,22 +554,57 @@ def register_user(user, pwd, fullname, user_class, school, level, xp=0):
 
     new_user_data = [user, pwd, xp, fullname, user_class, school, level]
 
-    # Ghi vào file máy cục bộ
+    # 1. Ghi file local list.csv
     try:
         with open("list.csv", mode="a", encoding="utf-8", newline="") as f:
             csv.writer(f).writerow(new_user_data)
     except Exception:
         pass
 
-    # Đẩy trực tiếp lên GitHub Repository
-    ok, msg = update_github_csv(new_user_data)
-    if ok:
-        return True, "Đăng ký thành công và đã đồng bộ lên GitHub!"
-    else:
-        return (
-            True,
-            f"Đã tạo tài khoản tạm thời (Cảnh báo GitHub: {msg})",
-        )
+    # 2. Đẩy thẳng lên GitHub API trực tiếp trong hàm này
+    token = st.secrets.get("GITHUB_TOKEN", "")
+    repo = st.secrets.get("REPO_NAME", "")
+    path = "list.csv"
+
+    if token and repo:
+        try:
+            url = f"https://api.github.com/repos/{repo}/contents/{path}"
+            headers = {
+                "Authorization": f"token {token}",
+                "Accept": "application/vnd.github.v3+json",
+            }
+            res = requests.get(url, headers=headers, timeout=10)
+
+            sha = None
+            content_text = ""
+            if res.status_code == 200:
+                file_data = res.json()
+                sha = file_data.get("sha")
+                content_bytes = base64.b64decode(file_data.get("content", ""))
+                content_text = content_bytes.decode("utf-8")
+
+            new_line = ",".join([str(item) for item in new_user_data])
+            updated_content = (
+                (content_text + "\n" + new_line)
+                if content_text
+                else new_line
+            )
+            encoded_content = base64.b64encode(
+                updated_content.encode("utf-8")
+            ).decode("utf-8")
+
+            payload = {
+                "message": f"Auto-update list.csv: Add user {user}",
+                "content": encoded_content,
+            }
+            if sha:
+                payload["sha"] = sha
+
+            requests.put(url, headers=headers, json=payload, timeout=10)
+        except Exception:
+            pass
+
+    return True, "Thành công!"
 def admin_delete_student(user):
     try:
         rows = get_all_users_from_csv()
