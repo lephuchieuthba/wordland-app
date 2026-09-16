@@ -458,7 +458,11 @@ def get_all_users_from_csv():
 def check_login(user, pwd):
     users = get_all_users_from_csv()
     for row in users:
-        if row and row[0].strip() == user and len(row) > 1 and row[1].strip() == pwd:
+        # Kiểm tra hàng hợp lệ và phải có ít nhất 2 cột (Tài khoản, Mật khẩu) trước khi truy cập chỉ số
+        if not row or len(row) < 2:
+            continue
+
+        if row[0].strip() == user and row[1].strip() == pwd:
             is_admin = (user == "lephuchieuadmin")
             xp = int(row[2].strip()) if len(row) > 2 and row[2].strip().isdigit() else (999999 if is_admin else 0)
             fullname = row[3].strip() if len(row) > 3 else ("Lê Phúc Hiếu (Quản Trị Viên)" if is_admin else "Học viên")
