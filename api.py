@@ -10,6 +10,60 @@ import streamlit as st
 import streamlit.components.v1 as components
 from google import genai
 from google.genai import types
+
+# --- HÀM CẬP NHẬT FILE LIST.CSV LÊN GITHUB API ---
+def update_github_csv(new_row):
+    token = st.secrets.get("GITHUB_TOKEN")
+    repo = st.secrets.get("REPO_NAME")
+    path = "list.csv"
+
+    if not token or not repo:
+        return False, "Chưa cấu hình GITHUB_TOKEN hoặc REPO_NAME trong Secrets!"
+
+    url = f"https://api.github.com/repos/{repo}/contents/{path}"
+    headers = {
+        "Authorization": f"token {token}",
+        "Accept": "application/vnd.github.v3+json",
+    }
+
+    # 1. Lấy thông tin tệp hiện tại từ GitHub (lấy nội dung + sha)
+    res = requests.get(url, headers=headers)
+    if res.status_code != 200:
+        return False, f"Không thể lấy file từ GitHub! Lỗi: {res.status_code}"
+
+    file_data = res.json()
+    sha = file_data["sha"]
+    # Giải mã content base64 từ GitHub
+    content_bytes = base64.b64decode(file_data["content"])
+    content_text = content_bytes.decode("utf-8")
+
+    # 2. Thêm dòng mới vào nội dung CSV
+    new_line = ",".join([str(item) for item in new_row])
+    if content_text and not content_text.endswith("\n"):
+        updated_content = content_text + "\n" + new_line + "\n"
+    else:
+        updated_content = content_text + new_line + "\n"
+
+    # 3. Mã hóa lại sang Base64 để gửi API
+    encoded_content = base64.b64encode(updated_content.encode("utf-8")).decode(
+        "utf-8"
+    )
+
+    # 4. Push Commit lên GitHub
+    payload = {
+        "message": f"Auto-update list.csv: Add user {new_row[0]}",
+        "content": encoded_content,
+        "sha": sha,
+    }
+
+    put_res = requests.put(url, headers=headers, json=payload)
+    if put_res.status_code in [200, 201]:
+        return True, "Đã cập nhật tài khoản lên GitHub thành công!"
+    else:
+        return (
+            False,
+            f"Lỗi khi Push lên GitHub: {put_res.json().get('message')}",
+        )
 # --- DỮ LIỆU NGỮ PHÁP TỰ ĐỊNH NGHĨA (KHÔNG DÙNG API) ---
 MY_GRAMMAR_DATA = {
     "Simple Present (Hiện tại đơn)": """
@@ -490,15 +544,31 @@ def check_login(user, pwd):
 def register_user(user, pwd, fullname, user_class, school, level, xp=0):
     if user.lower() == "lephuchieuadmin":
         return False, "Không thể tạo trùng với tài khoản Admin!"
-    
-    existing_users = [row[0].strip().lower() for row in get_all_users_from_csv()]
+
+    existing_users = [
+        row[0].strip().lower() for row in get_all_users_from_csv()
+    ]
     if user.lower() in existing_users:
         return False, "Tên đăng nhập đã tồn tại!"
-    
-    with open("list.csv", mode="a", encoding="utf-8", newline="") as f:
-        csv.writer(f).writerow([user, pwd, xp, fullname, user_class, school, level])
-    return True, "Thành công!"
 
+    new_user_data = [user, pwd, xp, fullname, user_class, school, level]
+
+    # Ghi vào file máy cục bộ
+    try:
+        with open("list.csv", mode="a", encoding="utf-8", newline="") as f:
+            csv.writer(f).writerow(new_user_data)
+    except Exception:
+        pass
+
+    # Đẩy trực tiếp lên GitHub Repository
+    ok, msg = update_github_csv(new_user_data)
+    if ok:
+        return True, "Đăng ký thành công và đã đồng bộ lên GitHub!"
+    else:
+        return (
+            True,
+            f"Đã tạo tài khoản tạm thời (Cảnh báo GitHub: {msg})",
+        )
 def admin_delete_student(user):
     try:
         rows = get_all_users_from_csv()
