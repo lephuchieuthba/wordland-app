@@ -1624,22 +1624,52 @@ with tab_reading:
         </div>
         """, unsafe_allow_html=True)
 
-# 7. HỘI THOẠI
+# 7. HỘI THOẠI (ĐÃ SỬA ÉP NỘI DUNG BẰNG TIẾNG ANH)
 with tab_dialogue:
-    st.subheader(f"🎧 Hội Thoại AI - {selected_topic}")
-    if st.button("💬 Tạo Hội Thoại Mới"):
-        try:
-            raw_text = generate_ai_content_cached(f"Tạo hội thoại 2 người về {selected_topic} dạng JSON.")
-            cleaned = clean_json_text(raw_text)
-            if cleaned:
-                st.session_state.dialogue_data = json.loads(cleaned)
-            else:
-                st.error("⚠️ Phản hồi từ AI rỗng!")
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+    st.subheader(f"🎧 Hội Thoại Tiếng Anh - {selected_topic}")
+    
+    if st.button("💬 Tạo Hội Thoại Tiếng Anh Mới", type="primary", key="btn_create_dialogue"):
+        with st.spinner("AI đang soạn đoạn hội thoại tiếng Anh..."):
+            prompt_dialogue = f"""
+            Tạo một đoạn hội thoại bằng TIẾNG ANH gồm 6-8 câu giữa 2 người (Speaker A & Speaker B) về chủ đề '{selected_topic}' phù hợp trình độ '{st.session_state.level}'.
+            Trả về DUY NHẤT định dạng JSON chuẩn theo cấu trúc:
+            {{
+                "dialogue": [
+                    {{"speaker": "John", "text": "Hi Mary! Are you free tonight?", "translation": "Chào Mary! Tối nay bạn có rảnh không?"}},
+                    {{"speaker": "Mary", "text": "Yes, I am. What's up?", "translation": "Có chứ. Có chuyện gì thế?"}}
+                ]
+            }}
+            """
+            try:
+                raw_text = generate_ai_content_cached(prompt_dialogue)
+                cleaned = clean_json_text(raw_text)
+                if cleaned:
+                    st.session_state.dialogue_data = json.loads(cleaned)
+                    trigger_confetti()
+                    st.rerun()
+                else:
+                    st.error("⚠️ AI rỗng, vui lòng thử lại!")
+            except Exception as e:
+                st.error(f"Lỗi khởi tạo hội thoại: {e}")
+
+    # HIỂN THỊ ĐOẠN HỘI THOẠI BẰNG TIẾNG ANH
     if "dialogue_data" in st.session_state and st.session_state.dialogue_data:
-        for line in st.session_state.dialogue_data.get("dialogue", []):
-            st.write(f"**{line.get('speaker')}:** {line.get('text')}")
+        dialogue_list = st.session_state.dialogue_data.get("dialogue", [])
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        for line in dialogue_list:
+            speaker = line.get("speaker", "Person")
+            text_en = line.get("text", "")
+            text_vi = line.get("translation", "")
+            
+            # Giao diện hiển thị tin nhắn Tiếng Anh + Dịch nghĩa bên dưới
+            st.markdown(f"""
+            <div style="background: rgba(255, 255, 255, 0.95); padding: 14px 18px; border-radius: 14px; margin-bottom: 12px; border-left: 5px solid #FF7675; box-shadow: 0 4px 10px rgba(0,0,0,0.08); color: #2d3436;">
+                <b style="color: #6C5CE7; font-size: 1.1rem;">🗣️ {speaker}:</b>
+                <p style="font-size: 1.15rem; font-weight: 700; color: #2d3436; margin: 4px 0 2px 0;">"{text_en}"</p>
+                <p style="font-size: 0.95rem; color: #636e72; font-style: italic; margin: 0;">👉 Dịch: {text_vi}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
 # 8. VIẾT ĐOẠN VĂN
 with tab_writing:
